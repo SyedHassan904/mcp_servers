@@ -1,0 +1,405 @@
+MCP
+
+1)MCP(Model Context Protocol)
+
+MCP is a standard protocol that allows AI models/agents to connect to external tools and data.
+
+Basic idea:
+
+AI Agent
+   |
+  MCP
+   |
+   +-- Calculator
+   +-- Database
+   +-- File System
+   +-- Web Search
+
+
+WITHOUT MCP
+
+You can directly define tools inside your application:
+
+@tool
+def calculator(a: int, b: int):
+    return a + b
+
+The LangGraph/LangChain application directly knows and calls this function.
+
+
+WITH MCP
+
+You can have a separate MCP server that exposes tools:
+
+MCP Server
+|
++-- calculator
++-- weather
++-- search
++-- database
+
+The AI application acts as an MCP client and connects to the MCP server.
+
+LangGraph Agent
+       |
+       | MCP
+       v
+MCP Server
+       |
+       +-- calculator()
+       +-- search()
+       +-- database_query()
+
+
+WHY MCP?
+
+The main idea is STANDARDIZATION.
+
+MCP provides a common way for AI applications to connect with:
+
+1. Tools
+   Functions the AI can execute.
+
+2. Resources
+   Data/context the AI can access.
+
+3. Prompts
+   Reusable prompt templates.
+
+
+MCP ARCHITECTURE
+
+              MCP
+               |
+      +--------+--------+
+      v        v        v
+   Tools    Resources  Prompts
+      |        |
+      v        v
+ calculator   files
+ database     documents
+ web search   application data
+
+
+IN LANGGRAPH
+
+You can use:
+
+MultiServerMCPClient
+
+and create MCP servers using:
+
+FastMCP
+
+Architecture:
+
+LangGraph
+   |
+   | MultiServerMCPClient
+   v
+MCP Server
+   |
+   | FastMCP
+   v
+Calculator Tool
+
+
+EXAMPLE MCP SERVER
+
+from fastmcp import FastMCP
+
+mcp = FastMCP("Calculator")
+
+@mcp.tool
+def add(a: int, b: int) -> int:
+    return a + b
+
+
+The MCP server exposes the add() function as an MCP tool.
+
+Another AI application can connect to the MCP server and use the tool.
+
+
+IMPORTANT
+
+MCP is NOT an AI model.
+
+MCP is NOT an agent framework.
+
+MCP is a PROTOCOL that allows AI applications to connect with tools, data, and prompts.
+
+=================================================================================================>
+
+2)
+
+Why Json-RPC(Json remote Procedure call)  in Data layer instead of RestApis?
+->It's lightweight
+->Supports bi-directional communication
+->it is transport-agnostic
+->Supports batching
+->Supports notification
+
+=>MCP Transport layer
+->The transport layer is the mechanism that moves JSON-RPC messages between the client and server.
+->The choice of transport depends on the type of the server.
+(Types of servers->Local server and Remote server)
+
+Mode of transfer:
+=>In local:
+->the of transport is STDIO
+=>In Remote, HTTP/SSE
+
+
+Benefits of STDIO as a Transport mode:
+->Fast(data is passed directly between between processes).
+->Secure(no open network port that could be attacked;communcation is only local)
+->Simple(every language/runtime supports reading/writingfrom stdin/stdout. no extra libraries required).
+
+
+For Remote(HTTP+SSE)
+SSE(Server sent events):
+->SSE is extension of HTTP
+->Using SSE the server sends multiple messages to client over a single open connection.
+->Instead of sending one large JSON blob, the server can stream chunks of data as they are ready.
+->Ideal for long running tasks or incremental updates.
+
+=================================================================================================>
+
+3)MCP lifecycle
+
+=>The MCP lifecycle describes the complete sequence of steps that govern how a Host(client) and a server establish,use, and end a connection during a session.
+
+
+MCP LIFECYCLE
+
+The MCP lifecycle describes how an MCP client and MCP server
+start, connect, communicate, and shut down.
+
+A simple flow is:
+
+User
+  ↓
+AI Application / MCP Host
+  ↓
+MCP Client
+  ↓
+Transport (stdio / Streamable HTTP)
+  ↓
+MCP Server
+  ↓
+Tools / Resources / Prompts
+
+
+1. INITIALIZATION
+
+First, the MCP client connects to the MCP server.
+
+They perform an initialization handshake:
+
+Client → initialize → Server
+Client ← initialize response ← Server
+
+During initialization, they negotiate things such as:
+
+- MCP protocol version
+- Client capabilities
+- Server capabilities
+
+For example:
+
+Client:
+"I support these MCP features..."
+
+Server:
+"I support tools and resources..."
+
+
+2. CAPABILITY NEGOTIATION
+
+After initialization, both sides know what the other side
+supports.
+
+For example:
+
+Client capabilities
+├── sampling
+└── roots
+
+Server capabilities
+├── tools
+├── resources
+└── prompts
+
+The client can then use only the capabilities exposed by the server.
+
+
+3. OPERATION / COMMUNICATION
+
+Now the actual MCP communication begins.
+
+The client can ask the server to:
+
+List tools
+
+Client → tools/list → Server
+Server → available tools → Client
+
+For example:
+
+calculator
+weather
+search_database
+
+Then the LLM may decide to call a tool:
+
+Client → tools/call → Server
+              ↓
+        calculator
+              ↓
+Server → result → Client
+
+The communication uses JSON-RPC messages.
+
+
+4. NOTIFICATIONS
+
+MCP also supports notifications.
+
+A notification is a message where the sender doesn't expect
+a response.
+
+For example:
+
+Server → notification → Client
+
+This can be used when something changes, such as a resource
+becoming updated.
+
+
+5. SHUTDOWN
+
+When the client is finished, the connection/transport is closed.
+
+For a local stdio server, this generally means the server
+process can terminate.
+
+Client
+  ↓
+close transport
+  ↓
+Server process terminates
+
+For a remote server using HTTP, the HTTP connection/session
+handling depends on the transport.
+
+
+COMPLETE LIFECYCLE
+
+        ┌───────────────┐
+        │ Start Server  │
+        └───────┬───────┘
+                ↓
+        ┌───────────────┐
+        │   Connect     │
+        └───────┬───────┘
+                ↓
+        ┌───────────────┐
+        │  Initialize   │
+        │  + negotiate  │
+        │  capabilities │
+        └───────┬───────┘
+                ↓
+        ┌───────────────┐
+        │    Operate    │
+        │ tools/list    │
+        │ tools/call    │
+        │ resources/... │
+        └───────┬───────┘
+                ↓
+        ┌───────────────┐
+        │   Shutdown    │
+        └───────────────┘
+
+
+IN ONE SENTENCE
+
+MCP lifecycle = Start → Connect → Initialize
+→ Negotiate capabilities → Communicate → Shutdown.
+
+
+IMPORTANT DISTINCTION
+
+The lifecycle is about the MCP session itself.
+
+stdio / Streamable HTTP are transports used to carry the
+JSON-RPC messages during the lifecycle.
+
+JSON-RPC = Message format
+Transport = Mechanism used to transfer those messages
+Lifecycle = Stages of the MCP connection/session
+
+
+-------------------------------------------------
+Lifecycle of MCP
+->Initialization
+->Operation
+->shutdown
+
+
+Shutdown in STDIO:
+=>Client-initiated shutdown(may):
+->close input stream to the child process(server)
+->wait for server to exit
+->send SIGTERM if server does not exit in time
+->send SIGKILL if still unresponsive
+=>Server-initiated shutdown(may):
+->close output stream to the client
+->Exit process
+=>But commonly client shutdown the server
+
+----------------------------------------------
+
+Special cases:
+
+=>Pings:
+->Ping is lightweight request/response method defined in MCP
+->Purpose:to check whether the other side(Host or Server) is still alive and the connection is responsive.
+=>When Ping is used:
+->Useful for checking if the other side is up before full initiaze.
+->If there is no activity for a while, a client may send periodic pings. Prevents the connection from being dropped silently by the OS, proxies, or firewalls.
+
+
+=>Error handling:
+->Error handling in MCP is how the host(client) and server signal that something went wrong with a request.
+->MCP inherits JSON RPC's standart error object format.
+Causes of Error:
+->unsupported or mismatched protocol version
+->calling a method for a capability that wasn't negotiated
+->invalid arguments to a tool.
+->Internal server failure while processing a request
+->Timeout issues, Client cancel request
+->Malformed JSON-RPC message.
+
+
+=>Timeout:
+->Timeout is about ensuring requests don't hang forever.
+Purpose:
+->Protects against unresponsive or overloaded servers.
+->Ensures resources(memory,CPU) aren't held indefinitely.
+->Gives the user feedback instead of waiting forever.
+
+
+=>Progress notification:
+->purpose: let the client know a long-running is still making progress.
+->Client includes a progressToken in the requests _meta.
+->Server can then send notification/progress updates while working.
+
+
+=================================================================================================>
+
+4)What are connectors(in client(Host))
+
+=>A connector is a built-in feature that links Claude to MCP servers automatically, without the need for manual setup or configuration.
+=>Most Claude Desktop users are non-technical end-users who just want Claude to "talk" to their apps(Notion, Google Drive, GitHub, Slack, etc). they don't want to run servers, edit JSON, or worry about transports.
+=>The Connector System wraps an MCP server behind the scences and handles authentication via OAuth(sign-in with google, GitHub, etc).
+=>This keeps things easy,safe, and consistent.
