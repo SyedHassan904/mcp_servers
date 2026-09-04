@@ -11,8 +11,15 @@ from datetime import datetime
 mcp = FastMCP(name="Expense tracker mcp")
 
 categories_path = os.path.join(os.path.dirname(__file__),"categories.json")
-database_url = os.getenv("NEON_POSTGRES_URL")
-print(database_url)
+
+
+def get_database_url():
+    database_url = os.getenv("NEON_POSTGRES_URL")
+
+    if not database_url:
+        raise RuntimeError("NEON_POSTGRES_URL is not configured")
+
+    return database_url
 
 # Normalize the date(user can give date in multiple ways so convert into one standart)
 def normalize_date(date_str:str):
@@ -37,7 +44,8 @@ def normalize_date(date_str:str):
 
 # Initial DB
 def init_db():
-    with psycopg.connect(database_url) as conn:
+    
+    with psycopg.connect(get_database_url()) as conn:
         conn.execute(
             """
             create table if not exists expenses(
@@ -51,7 +59,7 @@ def init_db():
             """
         )
         
-init_db()
+
 
 
 # Add Expense tool
@@ -67,7 +75,7 @@ async def add_expense(date:str,amount:int,category:str,subcategory:Optional[str]
     params = (date,amount,category,subcategory,note)
     
     try:
-        async with await psycopg.AsyncConnection.connect(database_url) as conn:
+        async with await psycopg.AsyncConnection.connect(get_database_url()) as conn:
             cursor = await conn.execute(query,params)
             row = await cursor.fetchone()
             return {"success":"Ok","id":row[0]}
@@ -103,7 +111,7 @@ async def get_expenses_given_range(start_date:Optional[str]=None,end_date:Option
     query +=" order by id asc"    
     
     try:
-        async with await psycopg.AsyncConnection.connect(database_url,row_factory=dict_row) as conn:
+        async with await psycopg.AsyncConnection.connect(get_database_url(),row_factory=dict_row) as conn:
             
             cursor = await conn.execute(query,params)
             return [
@@ -140,7 +148,7 @@ async def summarize(start_date:str,end_date:str,category:str=None):
     query+=" group by category order by total_amount asc"
     
     try:
-        async with await psycopg.AsyncConnection.connect(database_url,row_factory=dict_row) as conn:
+        async with await psycopg.AsyncConnection.connect(get_database_url(),row_factory=dict_row) as conn:
             
             cursor = await conn.execute(query,params)
             return [{
@@ -158,7 +166,7 @@ async def delete_expense(id:int):
     """
     query = "delete from expenses where id=%s"
     
-    async with await psycopg.AsyncConnection.connect(database_url) as conn:
+    async with await psycopg.AsyncConnection.connect(get_database_url()) as conn:
         cur = await conn.execute(query,(id,))
         if cur.rowcount==0:
             return {"success":False,"message":"Expense not deleted","id":id}
@@ -176,7 +184,7 @@ async def edit_expense(id:int,date:Optional[str],amount:Optional[int],category:O
     update_query = "update expenses set "
     params=[]
     conditions=[]
-    async with await psycopg.AsyncConnection.connect(database_url,row_factory=dict_row) as conn:
+    async with await psycopg.AsyncConnection.connect(get_database_url(),row_factory=dict_row) as conn:
         try:
             cur = await conn.execute("select * from expenses where id=%s",(id,))
             row = await cur.fetchone()
@@ -248,4 +256,5 @@ def categories():
         return f'{{"error": "Could not load categories: {str(e)}"}}'
 
 if __name__=="__main__":
+    init_db()
     mcp.run()
