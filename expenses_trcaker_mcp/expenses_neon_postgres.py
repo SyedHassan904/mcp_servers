@@ -11,7 +11,7 @@ from datetime import datetime
 mcp = FastMCP(name="Expense tracker mcp")
 
 categories_path = os.path.join(os.path.dirname(__file__),"categories.json")
-database_url = os.getenv("neon_postgres_url")
+database_url = os.getenv("NEON_POSTGRES_URL")
 print(database_url)
 
 # Normalize the date(user can give date in multiple ways so convert into one standart)
