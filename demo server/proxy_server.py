@@ -7,7 +7,7 @@ from fastmcp.client.auth import BearerAuth
 
 
 client = Client(
-    "https://normal-gray-dinosaur.fastmcp.app/mcp",
+    "https://philosophical-sapphire-urial.fastmcp.app/mcp",
     auth=BearerAuth(os.getenv("auth_token"))
 )
 
